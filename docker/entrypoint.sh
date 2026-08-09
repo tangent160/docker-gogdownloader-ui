@@ -41,9 +41,10 @@ export GOG_DOWNLOADER_PHAR
 
 fetch_cli() {
     url="https://github.com/RikudouSage/GogDownloader/releases/download/${GOGDL_VERSION}/gog-downloader"
-    tmp="${GOG_DOWNLOADER_PHAR}.part.$$"
-
     mkdir -p "$GOGDL_CLI_DIR"
+    # Not "$$": that is 1 in every container, so two containers sharing this
+    # /config would interleave their writes into one corrupt file.
+    tmp="$(mktemp "${GOG_DOWNLOADER_PHAR}.part.XXXXXX")"
     echo "[gogui] downloading gog-downloader ${GOGDL_VERSION}"
     if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
         rm -f "$tmp"

@@ -48,11 +48,10 @@ RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.
 
 COPY app/gogui /app/gogui
 COPY docker/entrypoint.sh /entrypoint.sh
+# gog-downloader is invoked as a plain command; the shim locates the phar.
+COPY docker/gog-downloader.sh /app/gog-downloader
 
-# gog-downloader is invoked as a plain command. The shim resolves the phar at
-# call time: the entrypoint exports GOG_DOWNLOADER_PHAR once it has fetched it.
 RUN set -eux; \
-    printf '#!/bin/sh\nphar="${GOG_DOWNLOADER_PHAR:-}"\nif [ -z "$phar" ] || [ ! -f "$phar" ]; then\n  echo "gog-downloader CLI is not available yet (download failed?); check the container log" >&2\n  exit 127\nfi\nexec php "$phar" "$@"\n' > /app/gog-downloader; \
     chmod +x /app/gog-downloader /entrypoint.sh; \
     ln -s /app/gog-downloader /usr/local/bin/gog-downloader; \
     mkdir -p /config /downloads /saves
