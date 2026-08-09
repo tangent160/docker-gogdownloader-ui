@@ -693,6 +693,98 @@ function renderJob(job) {
 
 // --- settings ---
 
+// The CLI itself is a phar downloaded into /config, so the user can move
+// between upstream releases without a new container image. The release list is
+// only fetched when asked for: it is a call out to GitHub.
+function renderCliVersionCard() {
+  const card = element(`
+    <div class="card">
+      <h2>gog-downloader</h2>
+      <p>Running version <strong>${escapeHtml(state.status.version)}</strong>.
+         Versions you install are kept in the config folder, so switching back is instant.
+         Older releases may not start on this container's PHP — if one is rejected, the
+         current version keeps running.</p>
+      <div class="cli-versions"></div>
+      <button class="button secondary" type="button">Check for versions</button>
+    </div>
+  `);
+  const slot = card.querySelector('.cli-versions');
+  const check = card.querySelector('button');
+
+  const paint = (data) => {
+    const options = data.releases.map((release) => {
+      const labels = [];
+      if (release.installed) labels.push('installed');
+      if (release.prerelease) labels.push('pre-release');
+      if (release.version === data.default) labels.push('image default');
+      return `<option value="${escapeHtml(release.version)}" ${release.active ? 'selected' : ''}>`
+        + `${escapeHtml(release.version)}${labels.length ? ` — ${labels.join(', ')}` : ''}</option>`;
+    }).join('');
+
+    slot.replaceChildren(element(`
+      <div>
+        <label class="field"><span>Version</span>
+          <select>${options || '<option value="">No installable releases found</option>'}</select>
+        </label>
+        <div class="row">
+          <button class="button" type="button" data-action="use" ${data.releases.length ? '' : 'disabled'}>Use this version</button>
+          <button class="button secondary" type="button" data-action="remove">Remove download</button>
+        </div>
+      </div>
+    `));
+
+    const select = slot.querySelector('select');
+    const remove = slot.querySelector('[data-action=remove]');
+
+    // Only a downloaded, non-default version can be deleted: the default is
+    // the fallback for everything else.
+    const syncRemove = () => {
+      const chosen = data.releases.find((release) => release.version === select.value);
+      remove.disabled = !chosen || !chosen.installed || chosen.version === data.default;
+    };
+    select.addEventListener('change', syncRemove);
+    syncRemove();
+
+    slot.querySelector('[data-action=use]').addEventListener('click', guard(async () => {
+      const version = select.value;
+      if (!version || version === data.active) {
+        toast('That version is already in use.');
+        return;
+      }
+      const chosen = data.releases.find((release) => release.version === version);
+      if (chosen && !chosen.installed) toast(`Downloading ${version}…`);
+      const result = await api('/cli/version', { method: 'PUT', ...json({ version }) });
+      toast(`Now running ${result.version}.`);
+      await boot();
+    }));
+
+    remove.addEventListener('click', guard(async () => {
+      const version = select.value;
+      const inUse = version === data.active;
+      const question = inUse
+        ? `Remove ${version}? It is in use, so the container will fall back to ${data.default}.`
+        : `Remove the downloaded copy of ${version}?`;
+      if (!confirm(question)) return;
+      const result = await api(`/cli/version/${encodeURIComponent(version)}`, { method: 'DELETE' });
+      toast(`Removed ${version}. Running ${result.version}.`);
+      await boot();
+    }));
+  };
+
+  check.addEventListener('click', guard(async () => {
+    check.disabled = true;
+    check.textContent = 'Checking…';
+    try {
+      paint(await api('/cli/releases'));
+      check.textContent = 'Refresh list';
+    } finally {
+      check.disabled = false;
+    }
+  }));
+
+  return card;
+}
+
 function renderSettings() {
   const container = document.createElement('div');
   const settings = state.settings || {};
@@ -710,10 +802,10 @@ function renderSettings() {
         <span class="muted">${state.status.diskFree != null ? `${formatSize(state.status.diskFree)} free` : ''}</span></div>
       <div class="switch"><span>Cloud saves<small>${escapeHtml(state.status.savesDir)}</small></span></div>
       <div class="switch"><span>Config<small>${escapeHtml(state.status.configDir)}</small></span></div>
-      <div class="switch"><span>gog-downloader<small>version ${escapeHtml(state.status.version)}</small></span></div>
     </div>
   `);
   container.append(paths);
+  container.append(renderCliVersionCard());
 
   const toggles = [
     ['include_hidden', 'Include hidden games', 'Adds --include-hidden to every sync so games you hid on GOG are fetched too. Only affects future syncs.'],

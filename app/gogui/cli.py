@@ -86,11 +86,17 @@ class GogCli:
     fight over it, so all invocations are serialised through the job queue.
     """
 
-    def __init__(self, config: Config) -> None:
+    def __init__(self, config: Config, phar: Callable[[], Path | None] | None = None) -> None:
         self._config = config
+        #: Resolves the phar the user picked in Settings, or None to keep the
+        #: one the entrypoint installed.
+        self._phar = phar
 
     def _environment(self) -> dict[str, str]:
         environment = dict(os.environ)
+        selected = self._phar() if self._phar is not None else None
+        if selected is not None:
+            environment["GOG_DOWNLOADER_PHAR"] = str(selected)
         environment["CONFIG_DIRECTORY"] = str(self._config.config_dir)
         environment["DOWNLOAD_DIRECTORY"] = str(self._config.download_dir)
         # Symfony's progress bars are far easier to parse without ANSI escapes.

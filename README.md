@@ -106,7 +106,13 @@ curl -fsSL https://github.com/RikudouSage/GogDownloader/releases/download/<tag>/
 ```
 
 In the Unraid template these are the advanced **CLI Version** and **CLI
-Checksum** fields. To change the default for everyone, bump
+Checksum** fields. You can also switch versions from the UI: **Settings →
+gog-downloader → Check for versions** lists every upstream release that ships a
+phar, downloads the one you pick into `/config/cli`, and switches to it. The
+choice is remembered across restarts, and previously installed versions stay on
+disk so switching back needs no network. A release that will not start in the
+container (some older ones do not run on its PHP) is rejected and the running
+version is left alone. To change the default for everyone, bump
 `GOGDL_PINNED_VERSION` and `GOGDL_PINNED_SHA256` in the `Dockerfile` and push a
 new image.
 

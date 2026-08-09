@@ -16,6 +16,12 @@ process and its own SQLite database is read directly for everything the UI shows
   `GOGDL_PINNED_VERSION` / `GOGDL_PINNED_SHA256` and overridable per-container
   with `GOG_DOWNLOADER_VERSION` / `GOG_DOWNLOADER_SHA256`. `/app/gog-downloader`
   is a shim that execs `php "$GOG_DOWNLOADER_PHAR"`, exported by the entrypoint.
+  The Settings screen can install any other upstream release into the same
+  directory (`clireleases.py`); the chosen tag lives in the `cli_version`
+  setting and `cli.py` passes its path down as `GOG_DOWNLOADER_PHAR`, so the
+  entrypoint's copy is only the fallback. Switching requires an idle queue and
+  runs `php <phar> --version` before keeping a download — several pre-1.14
+  releases are broken on modern PHP and must not replace a working phar.
 
 ## Layout
 
@@ -26,6 +32,7 @@ process and its own SQLite database is read directly for everything the UI shows
 | `app/gogui/jobs.py` | Serialised job queue + SSE fan-out; builds all CLI arguments. |
 | `app/gogui/db.py` | Read-only access to gog-downloader's SQLite file. |
 | `app/gogui/config.py` | Env-derived paths, and the UI's own settings store. |
+| `app/gogui/clireleases.py` | Lists upstream CLI releases, installs/caches phars. |
 | `app/gogui/filters.py` | DB value → CLI `--os`/`--language` argument mapping. |
 | `docker/entrypoint.sh` | Fetches/caches the CLI phar, PUID/PGID drop, then starts uvicorn. |
 | `unraid/` | Community Applications template. |

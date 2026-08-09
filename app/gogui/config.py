@@ -55,6 +55,20 @@ class Config:
         return self.config_dir / "covers"
 
     @property
+    def cli_dir(self) -> Path:
+        """Where the downloaded gog-downloader phars are cached."""
+        return _env_path("GOGDL_CLI_DIR", str(self.config_dir / "cli"))
+
+    @property
+    def default_cli_version(self) -> str:
+        """The release the entrypoint installs when the UI has no preference."""
+        return (
+            os.environ.get("GOG_DOWNLOADER_VERSION")
+            or os.environ.get("GOGDL_PINNED_VERSION")
+            or ""
+        ).strip()
+
+    @property
     def settings_file(self) -> Path:
         return self.config_dir / "webui-settings.json"
 
@@ -88,6 +102,9 @@ DEFAULT_SETTINGS: dict[str, object] = {
     "no_patches": False,
     "skip_existing_extras": True,
     "language_fallback_english": False,
+    # Release tag of the gog-downloader CLI to run. Empty means the version the
+    # image ships with, which the entrypoint has already downloaded.
+    "cli_version": "",
 }
 
 #: Bounds the CLI itself enforces (or that make no sense to exceed). A value

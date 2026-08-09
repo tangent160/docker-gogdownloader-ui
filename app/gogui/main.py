@@ -17,6 +17,7 @@ from pydantic import BaseModel, Field
 from .auth import COOKIE_NAME, SESSION_TTL, Authenticator
 from .backup import InvalidBackup, import_database
 from .cli import GogCli
+from .clireleases import TAG_PATTERN, CliReleases, ReleaseError
 from .config import SettingsStore, config
 from .covers import CoverStore
 from .db import GameDatabase
@@ -27,7 +28,18 @@ STATIC_DIR = Path(__file__).parent / "static"
 
 config.prepare()
 settings_store = SettingsStore(config.settings_file)
-cli = GogCli(config)
+cli_releases = CliReleases(config.cli_dir)
+
+
+def _selected_phar() -> Path | None:
+    """The CLI version chosen in Settings, if it is actually installed."""
+    version = str(settings_store.get("cli_version") or "")
+    if not version or not cli_releases.is_installed(version):
+        return None
+    return cli_releases.path_for(version)
+
+
+cli = GogCli(config, phar=_selected_phar)
 database = GameDatabase(config.database_file)
 covers = CoverStore(config.covers_dir, enabled=config.covers_enabled)
 authenticator = Authenticator(config)
@@ -386,6 +398,96 @@ async def get_settings() -> dict[str, Any]:
 @app.put("/api/settings", dependencies=[Depends(authenticated)])
 async def put_settings(payload: dict[str, Any]) -> dict[str, Any]:
     return {"settings": settings_store.update(payload)}
+
+
+# --------------------------------------------------------------------------
+# gog-downloader releases
+# --------------------------------------------------------------------------
+
+
+class CliVersionRequest(BaseModel):
+    version: str = ""
+
+
+def _active_cli_version() -> str:
+    selected = str(settings_store.get("cli_version") or "")
+    return selected or config.default_cli_version
+
+
+@app.get("/api/cli/releases", dependencies=[Depends(authenticated)])
+async def cli_release_list(refresh: bool = False) -> dict[str, Any]:
+    try:
+        releases = await cli_releases.available(refresh=refresh)
+    except ReleaseError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    active = _active_cli_version()
+    return {
+        "active": active,
+        "default": config.default_cli_version,
+        "installed": cli_releases.installed(),
+        "releases": [
+            {
+                "version": release.version,
+                "name": release.name,
+                "publishedAt": release.published_at,
+                "size": release.size,
+                "prerelease": release.prerelease,
+                "installed": cli_releases.is_installed(release.version),
+                "active": release.version == active,
+            }
+            for release in releases
+        ],
+    }
+
+
+@app.put("/api/cli/version", dependencies=[Depends(authenticated)])
+async def set_cli_version(payload: CliVersionRequest) -> dict[str, Any]:
+    # Switching swaps the binary the next job runs, and a download of a few
+    # tens of MB has to finish first — neither is safe mid-job.
+    _require_idle()
+    version = payload.version.strip()
+    if version and not TAG_PATTERN.match(version):
+        raise HTTPException(status_code=400, detail=f"Not a valid release tag: {version}")
+    if version and not cli_releases.is_installed(version):
+        try:
+            await cli_releases.install(version)
+        except ReleaseError as exc:
+            raise HTTPException(status_code=502, detail=str(exc)) from exc
+    settings_store.update({"cli_version": version})
+    return {
+        "active": _active_cli_version(),
+        "installed": cli_releases.installed(),
+        "version": await cli.version(),
+    }
+
+
+@app.delete("/api/cli/version/{version}", dependencies=[Depends(authenticated)])
+async def remove_cli_version(version: str) -> dict[str, Any]:
+    # Deleting the phar out from under a running job would kill it.
+    _require_idle()
+    version = version.strip()
+    if not TAG_PATTERN.match(version):
+        raise HTTPException(status_code=400, detail=f"Not a valid release tag: {version}")
+    # The image default is what everything falls back to, including a deletion
+    # of the version in use, so it is the one copy that has to stay.
+    if version == config.default_cli_version:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{version} is the version this image ships with and cannot be removed.",
+        )
+    try:
+        cli_releases.remove(version)
+    except ReleaseError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    # Removing the version in use falls back to the image default rather than
+    # leaving the UI pointing at a file that is gone.
+    if str(settings_store.get("cli_version") or "") == version:
+        settings_store.update({"cli_version": ""})
+    return {
+        "active": _active_cli_version(),
+        "installed": cli_releases.installed(),
+        "version": await cli.version(),
+    }
 
 
 @app.get("/api/backup/export", dependencies=[Depends(authenticated)])
