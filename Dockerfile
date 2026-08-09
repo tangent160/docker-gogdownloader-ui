@@ -12,7 +12,11 @@ COPY vendor/GogDownloader/composer.json vendor/GogDownloader/composer.lock ./
 RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
 
 COPY vendor/GogDownloader/ ./
-RUN composer dump-autoload --no-dev --classmap-authoritative \
+# Not --classmap-authoritative: src/DTO/DownloadDescription.php declares no
+# class (it is a class_alias shim), so it never lands in the classmap and an
+# authoritative loader refuses the PSR-4 fallback that would run the alias —
+# which breaks Symfony's service autodiscovery and every CLI command with it.
+RUN composer dump-autoload --no-dev --optimize \
     && rm -rf .git .github tests windows setup.iss shell.nix
 
 # ---------------------------------------------------------------------------
