@@ -1,0 +1,11 @@
+.git
+.github
+config
+downloads
+unraid
+**/__pycache__
+**/*.pyc
+.venv
+docker-compose.yml
+README.md
+CLAUDE.md

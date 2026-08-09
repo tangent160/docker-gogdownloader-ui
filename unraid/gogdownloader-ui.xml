@@ -1,0 +1,63 @@
+<?xml version="1.0"?>
+<Container version="2">
+  <Name>gogdownloader-ui</Name>
+  <Repository>ghcr.io/tangent160/gogdownloader-ui:latest</Repository>
+  <Registry>https://ghcr.io/tangent160/gogdownloader-ui</Registry>
+  <Branch>
+    <Tag>latest</Tag>
+    <TagDescription>Latest stable release</TagDescription>
+  </Branch>
+  <Network>bridge</Network>
+  <MyIP/>
+  <Shell>sh</Shell>
+  <Privileged>false</Privileged>
+  <Support>https://github.com/tangent160/docker-gogdownloader-ui/issues</Support>
+  <Project>https://github.com/tangent160/docker-gogdownloader-ui</Project>
+  <Overview>
+    A mobile-first web UI for [a href=https://github.com/RikudouSage/GogDownloader target=_blank]RikudouSage/GogDownloader[/a], the PHP CLI that downloads the games you own on GOG.
+
+    Log in to GOG from the browser, sync your library, browse it as a grid of covers, pick exactly which installers, patches and extras you want, and watch the download progress live. Cloud saves and database backup/restore are included.
+
+    [b]Setup[/b]
+    [olist]
+    [*]Point [b]Downloads[/b] at the share where you want your games stored.
+    [*]Leave [b]Config[/b] on the default appdata path — it holds the gog-downloader database with your login token and synced library, and must persist across restarts.
+    [*]Start the container, open the WebUI and log in to GOG using the code login.
+    [*]Run a sync, then download whatever you like.
+    [/olist]
+
+    [b]Note:[/b] setting a WebUI username and password is strongly recommended if the container is reachable from outside your LAN — the session is a live GOG login.
+  </Overview>
+  <Category>Downloaders: MediaApp:Other</Category>
+  <WebUI>http://[IP]:[PORT:8080]/</WebUI>
+  <TemplateURL>https://raw.githubusercontent.com/tangent160/docker-gogdownloader-ui/main/unraid/gogdownloader-ui.xml</TemplateURL>
+  <Icon>https://raw.githubusercontent.com/tangent160/docker-gogdownloader-ui/main/unraid/icon.png</Icon>
+  <ExtraParams>--init</ExtraParams>
+  <DonateText/>
+  <DonateLink/>
+  <Requires/>
+
+  <Config Name="WebUI Port" Target="8080" Default="8080" Mode="tcp" Description="Port the web interface listens on." Type="Port" Display="always" Required="true" Mask="false">8080</Config>
+
+  <Config Name="Downloads" Target="/downloads" Default="/mnt/user/games/gog" Mode="rw" Description="Where downloaded installers and extras are saved." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/games/gog</Config>
+
+  <Config Name="Config" Target="/config" Default="/mnt/user/appdata/gogdownloader-ui" Mode="rw" Description="Persistent storage for the gog-downloader SQLite database (login token and synced library), UI settings and the cover art cache. Must persist across restarts." Type="Path" Display="always" Required="true" Mask="false">/mnt/user/appdata/gogdownloader-ui</Config>
+
+  <Config Name="Cloud Saves" Target="/saves" Default="/mnt/user/games/gog-saves" Mode="rw" Description="Where downloaded GOG cloud saves are stored." Type="Path" Display="advanced" Required="false" Mask="false">/mnt/user/games/gog-saves</Config>
+
+  <Config Name="WebUI Username" Target="WEBUI_USERNAME" Default="" Mode="" Description="Username for the web interface. Leave this and the password empty to run without a login (trusted LAN only)." Type="Variable" Display="always" Required="false" Mask="false"/>
+
+  <Config Name="WebUI Password" Target="WEBUI_PASSWORD" Default="" Mode="" Description="Password for the web interface. Both this and the username must be set for the login to be enforced." Type="Variable" Display="always" Required="false" Mask="true"/>
+
+  <Config Name="Cover Art" Target="COVER_ART" Default="true" Mode="" Description="Fetch game cover art from GOG's public product API and cache it under /config. Set to false for a text-only library with no outbound requests beyond the downloader itself." Type="Variable" Display="advanced" Required="false" Mask="false">true</Config>
+
+  <Config Name="PUID" Target="PUID" Default="99" Mode="" Description="User ID that owns downloaded files. 99 is 'nobody' on Unraid." Type="Variable" Display="advanced" Required="false" Mask="false">99</Config>
+
+  <Config Name="PGID" Target="PGID" Default="100" Mode="" Description="Group ID that owns downloaded files. 100 is 'users' on Unraid." Type="Variable" Display="advanced" Required="false" Mask="false">100</Config>
+
+  <Config Name="UMASK" Target="UMASK" Default="022" Mode="" Description="File mode mask applied to downloaded files." Type="Variable" Display="advanced" Required="false" Mask="false">022</Config>
+
+  <Config Name="Secure Cookie" Target="WEBUI_COOKIE_SECURE" Default="false" Mode="" Description="Set to true when the UI is served over HTTPS through a reverse proxy, so the session cookie is marked Secure." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="Container timezone." Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
+</Container>

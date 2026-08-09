@@ -1,0 +1,4 @@
+[submodule "vendor/GogDownloader"]
+	path = vendor/GogDownloader
+	url = https://github.com/RikudouSage/GogDownloader.git
+	ignore = dirty

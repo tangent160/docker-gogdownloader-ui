@@ -1,0 +1,23 @@
+# For local development and non-Unraid hosts. On Unraid use the Community
+# Applications template in unraid/ instead.
+services:
+  gogdownloader-ui:
+    build: .
+    image: gogdownloader-ui:local
+    container_name: gogdownloader-ui
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+      - ./saves:/saves
+    environment:
+      PUID: 1000
+      PGID: 1000
+      UMASK: "022"
+      # Leave both unset to run without a login (trusted LAN only).
+      # WEBUI_USERNAME: admin
+      # WEBUI_PASSWORD: change-me
+      COVER_ART: "true"
+      TZ: Etc/UTC
+    restart: unless-stopped
