@@ -1,3 +1,6 @@
 """Web UI for the gog-downloader CLI."""
 
-__version__ = "1.0.0"
+#: The UI's own version, distinct from the gog-downloader CLI's. This file is
+#: the source of truth: `release.yml` refuses to publish a `v*` tag that does
+#: not match it, and the image tag is derived from the git tag.
+__version__ = "0.1.0"

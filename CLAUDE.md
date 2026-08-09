@@ -105,6 +105,55 @@ CONFIG_DIRECTORY=/tmp/cfg DOWNLOAD_DIRECTORY=/tmp/dl SAVES_DIRECTORY=/tmp/sv \
   GOG_DOWNLOADER_BIN=/tmp/stub.sh uvicorn gogui.main:app --port 8099
 ```
 
+## Versioning
+
+The image's own version is `__version__` in `app/gogui/__init__.py` — the only
+source of truth. `docker.yml` reads it and fails a `v*` tag that disagrees,
+then publishes the semver image tags and a GitHub Release built from that
+version's `CHANGELOG.md` section. Commit and build date reach the app as the
+`GOGUI_COMMIT` / `GOGUI_BUILD_DATE` build args (empty outside CI), surfaced
+through `config.commit` / `config.build_date`, `/api/status` and the Settings
+About card. User-visible changes belong under `## [Unreleased]` in
+`CHANGELOG.md` as they are made, not at release time.
+
+### Bumping the version
+
+Docs first, version last: the version bump is what makes a state releasable, so
+nothing should be stale by the time it happens. Work through these in order.
+
+1. **Decide the number.** Semver against the *container's contract*: major for
+   a breaking change to environment variables, volumes or the API; minor for
+   new functionality; patch for fixes only. Ask the user which they want if the
+   change could reasonably be read either way.
+2. **Bring `CLAUDE.md` up to date.** Reread the sections touching what changed —
+   the layout table, the load-bearing rules, the CLI semantics — and correct
+   anything the change invalidated. New files that carry a rule get a table row.
+3. **Bring `README.md` up to date.** Anything user-facing: features, container
+   configuration, the env var table, screenshots' descriptions. A new setting
+   or endpoint that is not in the README does not exist.
+4. **Bring `CHANGELOG.md` up to date.** Every user-visible change since the last
+   release must appear under `## [Unreleased]`; check `git log` against it
+   rather than trusting the section is complete. Then rename that heading to
+   `## [x.y.z] - YYYY-MM-DD` using today's date, and open a fresh empty
+   `## [Unreleased]` above it.
+5. **Bump `__version__`** in `app/gogui/__init__.py` to the same number. The
+   tag check in `docker.yml` compares against exactly this string, so it must
+   match the changelog heading and the tag that follows.
+6. **Verify** that the three docs agree with each other and with the code, and
+   that the changelog section for the new version is what you want the GitHub
+   Release to say — it becomes the release body verbatim.
+7. **Stop and ask the user to commit and push.** Never run `git add`, `git
+   commit`, `git tag` or `git push` yourself. Leave everything in the working
+   tree, summarise what changed, and tell the user the commands they need:
+
+   ```
+   git add -A && git commit -m "Release vx.y.z"
+   git tag vx.y.z && git push && git push origin vx.y.z
+   ```
+
+   Pushing the tag is what triggers the release; a commit without it publishes
+   only `latest`.
+
 ## Updating upstream
 
 Bump `GOGDL_PINNED_VERSION` and `GOGDL_PINNED_SHA256` in the `Dockerfile`

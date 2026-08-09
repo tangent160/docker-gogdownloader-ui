@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
+from . import __version__
 from .auth import COOKIE_NAME, SESSION_TTL, Authenticator
 from .backup import InvalidBackup, import_database
 from .cli import GogCli
@@ -119,6 +120,9 @@ async def status(request: Request) -> dict[str, Any]:
             "coversEnabled": config.covers_enabled,
             "busy": queue.busy,
             "version": await cli.version(),
+            "appVersion": __version__,
+            "appCommit": config.commit,
+            "appBuildDate": config.build_date,
             "diskFree": _disk_free(config.download_dir),
         }
     )

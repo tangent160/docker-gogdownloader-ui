@@ -954,7 +954,32 @@ function renderSettings() {
     container.append(account);
   }
 
+  container.append(renderAboutCard());
+
   return container;
+}
+
+// The image's own version, as opposed to the CLI's. Commit and build date are
+// only stamped in by the image build, so a checkout shows the version alone.
+function renderAboutCard() {
+  const commit = state.status.appCommit || '';
+  const rows = [
+    ['UI version', state.status.appVersion || 'unknown'],
+    ['gog-downloader', state.status.version || 'unknown'],
+  ];
+  if (commit) rows.push(['Commit', commit.slice(0, 12)]);
+  if (state.status.appBuildDate) rows.push(['Built', state.status.appBuildDate]);
+
+  return element(`
+    <div class="card">
+      <h2>About</h2>
+      <p>Quote these when reporting a problem.</p>
+      ${rows.map(([label, value]) =>
+        `<div class="switch"><span>${label}</span><span class="muted">${escapeHtml(String(value))}</span></div>`).join('')}
+      <a class="button secondary" style="text-decoration:none" target="_blank" rel="noreferrer"
+         href="https://github.com/tangent160/docker-gogdownloader-ui/blob/main/CHANGELOG.md">Changelog</a>
+    </div>
+  `);
 }
 
 // ---------------------------------------------------------------- chrome events

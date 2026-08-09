@@ -46,6 +46,13 @@ RUN python3 -m venv "$VIRTUAL_ENV"
 COPY app/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
+# Build provenance, surfaced by the UI's About card. Both are optional: a
+# plain `docker build` leaves them empty and the UI just shows the version.
+ARG GOGUI_COMMIT=
+ARG GOGUI_BUILD_DATE=
+ENV GOGUI_COMMIT=$GOGUI_COMMIT \
+    GOGUI_BUILD_DATE=$GOGUI_BUILD_DATE
+
 COPY app/gogui /app/gogui
 COPY docker/entrypoint.sh /entrypoint.sh
 # gog-downloader is invoked as a plain command; the shim locates the phar.

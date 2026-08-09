@@ -42,6 +42,11 @@ class Config:
     #: cookie can't be Secure by default.
     cookie_secure: bool = field(default_factory=lambda: _env_bool("WEBUI_COOKIE_SECURE", False))
 
+    #: Stamped in by the image build so a running container can say exactly
+    #: which source it came from. Empty when running from a checkout.
+    commit: str = field(default_factory=lambda: os.environ.get("GOGUI_COMMIT", "").strip())
+    build_date: str = field(default_factory=lambda: os.environ.get("GOGUI_BUILD_DATE", "").strip())
+
     @property
     def auth_required(self) -> bool:
         return bool(self.username and self.password)

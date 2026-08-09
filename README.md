@@ -61,6 +61,13 @@ docker build -t gogdownloader-ui .
 The image contains only the web UI and a PHP runtime; the CLI is fetched at
 first start, so the build itself needs no access to GitHub.
 
+A local build leaves the commit and build date in **Settings → About** blank.
+CI fills them in; pass them yourself if you want them:
+
+```bash
+docker build -t gogdownloader-ui --build-arg GOGUI_COMMIT="$(git rev-parse HEAD)" --build-arg GOGUI_BUILD_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)" .
+```
+
 ## Configuration
 
 | Variable | Default | Purpose |
@@ -115,6 +122,41 @@ container (some older ones do not run on its PHP) is rejected and the running
 version is left alone. To change the default for everyone, bump
 `GOGDL_PINNED_VERSION` and `GOGDL_PINNED_SHA256` in the `Dockerfile` and push a
 new image.
+
+## Versioning and releases
+
+The image is versioned separately from the CLI it drives. **Settings → About**
+shows the UI version, the commit and build date the image was made from, and
+the CLI version in use — quote these when reporting a problem. The same values
+come back from `GET /api/status` as `appVersion`, `appCommit` and
+`appBuildDate`.
+
+Versions are [semantic](https://semver.org/): major for a breaking change to
+the container's environment variables, volumes or API; minor for new
+functionality; patch for fixes. `CHANGELOG.md` records what changed.
+
+While the version is below 1.0 the container's contract is not settled — a
+minor bump (`0.1` → `0.2`) may change environment variables, volumes or the
+API, so read the changelog before updating.
+
+Published image tags:
+
+| Tag | Moves | Use it for |
+| --- | --- | --- |
+| `latest` | every push to `main` | trying the newest work |
+| `0.1` | every patch release in that line | staying current within a line |
+| `0.1.0` | never | pinning exactly |
+
+To cut a release:
+
+1. Check that `README.md` and `CLAUDE.md` describe the current behaviour.
+2. Move the `Unreleased` entries in `CHANGELOG.md` under a new
+   `## [x.y.z] - YYYY-MM-DD` heading, leaving an empty `Unreleased` above it.
+3. Bump `__version__` in `app/gogui/__init__.py` to the same number.
+4. Commit, then tag `vx.y.z` and push both the commit and the tag.
+
+CI fails the build if a `v*` tag does not match `__version__`, then publishes
+the image tags and a GitHub Release whose body is that changelog section.
 
 ## Security notes
 
