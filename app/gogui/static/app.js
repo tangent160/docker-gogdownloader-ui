@@ -9,7 +9,7 @@ const state = {
   jobs: [],
   settings: null,
   detail: null,       // { game, groups, extras, platforms, languages }
-  selection: null,    // { selected:Set, extras:bool, platforms:Set, languages:Set }
+  selection: null,    // { selected:Set, anchor:string|null, extras:bool, platforms:Set, languages:Set }
   openLogs: new Set(),
 };
 
@@ -442,7 +442,7 @@ function renderGameDetail(rowId) {
     });
     installers.append(selectAll, element('<div class="spacer"></div>'));
 
-    for (const group of visible) {
+    visible.forEach((group, index) => {
       const variants = group.variants
         .map((variant) => [variant.platform, variant.language].filter(Boolean).join(' · '))
         .filter(Boolean);
@@ -455,12 +455,26 @@ function renderGameDetail(rowId) {
           </span>
         </label>
       `);
-      row.querySelector('input').addEventListener('change', (event) => {
+      const input = row.querySelector('input');
+      // Shift-click extends from the last plainly clicked row, like a file manager.
+      input.addEventListener('click', (event) => {
+        const anchor = visible.findIndex((other) => other.name === selection.anchor);
+        if (!event.shiftKey || anchor < 0 || anchor === index) return;
+        const [from, to] = anchor < index ? [anchor, index] : [index, anchor];
+        for (let i = from; i <= to; i += 1) {
+          if (event.target.checked) selection.selected.add(visible[i].name);
+          else selection.selected.delete(visible[i].name);
+        }
+        window.getSelection()?.removeAllRanges();
+        render();
+      });
+      input.addEventListener('change', (event) => {
         if (event.target.checked) selection.selected.add(group.name);
         else selection.selected.delete(group.name);
+        selection.anchor = group.name;
       });
       installers.append(row);
-    }
+    });
   }
   container.append(installers);
 
@@ -552,6 +566,7 @@ const loadGameDetail = guard(async (rowId) => {
   state.detail = detail;
   state.selection = {
     selected: new Set(),
+    anchor: null,
     extras: false,
     platforms: new Set(),
     languages: new Set(),
