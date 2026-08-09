@@ -70,6 +70,13 @@ process and its own SQLite database is read directly for everything the UI shows
 - `update-database` skips games hidden on GOG unless `--include-hidden` is
   passed. The setting only affects future syncs; turning it off never removes
   already-synced hidden games.
+- `update-database --search=<term>` (the `update` alias is the same command)
+  refreshes only matching games. The sync screen exposes it as the `search` mode,
+  which marks the library partial; Settings exposes the same flag as the
+  `update_search` mode for refreshing games already synced, which deliberately
+  leaves `sync_mode` untouched. Settings groups it with an `--updated-only` run
+  (the `incremental` mode, same as the sync screen's) in one "Library updates"
+  card, using `.subcard` blocks.
 - `update-database --updated-only` also fetches every owned game *missing* from
   the local database, so it is a safe default — but after a `--search` sync the
   library is partial, which the sync screen warns about.

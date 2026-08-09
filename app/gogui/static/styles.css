@@ -169,6 +169,12 @@ main {
 .card h2 { margin: 0 0 4px; font-size: 1rem; }
 .card p { margin: 0 0 12px; color: var(--text-dim); font-size: 0.9rem; }
 
+/* A related action grouped inside a card, separated by a rule rather than its
+   own border so the group still reads as one card. */
+.subcard { padding-top: 12px; border-top: 1px solid var(--border); }
+.subcard + .subcard { margin-top: 12px; }
+.subcard h3 { margin: 0 0 4px; font-size: 0.95rem; }
+
 .button {
   display: inline-flex;
   align-items: center;

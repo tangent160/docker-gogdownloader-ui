@@ -266,7 +266,7 @@ async def languages() -> dict[str, Any]:
 
 
 class SyncRequest(BaseModel):
-    mode: str = "incremental"  # full | incremental | search | clear
+    mode: str = "incremental"  # full | incremental | search | update_search | clear
     query: str = ""
 
 
@@ -296,18 +296,22 @@ async def job_log(job_id: int) -> dict[str, Any]:
 
 @app.post("/api/jobs/sync", dependencies=[Depends(authenticated)])
 async def enqueue_sync(payload: SyncRequest) -> dict[str, Any]:
-    if payload.mode not in ("full", "incremental", "search", "clear"):
+    if payload.mode not in ("full", "incremental", "search", "update_search", "clear"):
         raise HTTPException(status_code=400, detail="Unknown sync mode.")
-    if payload.mode == "search" and not payload.query.strip():
+    if payload.mode in ("search", "update_search") and not payload.query.strip():
         raise HTTPException(status_code=400, detail="A search sync needs a search term.")
     # A --search sync only fetches matching games; remember that so the UI can
-    # warn that the library is partial.
-    settings_store.update({"sync_mode": payload.mode if payload.mode != "clear" else "full"})
+    # warn that the library is partial. "update_search" is a targeted refresh of
+    # games the user already has, so it must not downgrade a full library to
+    # "partial" — leave sync_mode alone for it.
+    if payload.mode != "update_search":
+        settings_store.update({"sync_mode": payload.mode if payload.mode != "clear" else "full"})
     titles = {
         "full": "Full library sync",
         "incremental": "Incremental sync",
         "clear": "Clear and resync library",
         "search": f"Sync matching “{payload.query.strip()}”",
+        "update_search": f"Update matching “{payload.query.strip()}”",
     }
     job = queue.enqueue(
         JobType.SYNC, titles[payload.mode], mode=payload.mode, query=payload.query.strip()

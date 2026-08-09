@@ -106,7 +106,20 @@ function navigate(path) {
   location.hash = `#/${path}`;
 }
 
-window.addEventListener('hashchange', () => { render(); });
+let lastRoute = currentRoute().name;
+window.addEventListener('hashchange', () => {
+  const route = currentRoute().name;
+  const previous = lastRoute;
+  lastRoute = route;
+  render();
+  // Arriving at the library from another tab: the database may have gained games
+  // since it was last drawn (a sync run, or a change made in another browser),
+  // so re-read it. Backing out of a game's detail screen can't have added games,
+  // so that hop is skipped.
+  if (route === 'library' && previous !== 'library' && previous !== 'game') {
+    refreshLibrary().then(render).catch(() => {});
+  }
+});
 
 // ---------------------------------------------------------------- data
 
@@ -849,6 +862,42 @@ function renderSettings() {
     });
   });
   container.append(tuning);
+
+  const startSync = guard(async (mode, query = '') => {
+    await api('/jobs/sync', { method: 'POST', ...json({ mode, query }) });
+    toast('Update queued.');
+    navigate('queue');
+  });
+
+  const sync = element(`
+    <div class="card">
+      <h2>Library updates</h2>
+      <p>Targeted <code>update-database</code> runs against the library you already
+         have. The Sync screen is where you populate it in the first place.</p>
+      <div class="subcard">
+        <h3>Update changed games</h3>
+        <p>Runs <code>update-database --updated-only</code>: refetches the games GOG
+           reports as changed, plus anything you own that is missing locally.</p>
+        <button class="button secondary" type="button">Update changed games</button>
+      </div>
+      <form class="subcard">
+        <h3>Update matching games</h3>
+        <p>Runs <code>update-database --search</code> to refresh just the games whose
+           title matches the term — much faster when one game's files changed.
+           Anything already in your library stays.</p>
+        <label class="field"><span>Search term</span><input type="text" name="query" required placeholder="e.g. Baldur"></label>
+        <button class="button secondary" type="submit">Update matching games</button>
+      </form>
+    </div>
+  `);
+  sync.querySelector('.subcard button').addEventListener('click', () => startSync('incremental'));
+  const searchForm = sync.querySelector('form.subcard');
+  searchForm.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const query = new FormData(searchForm).get('query').trim();
+    if (query) startSync('update_search', query);
+  });
+  container.append(sync);
 
   const backup = element(`
     <div class="card">

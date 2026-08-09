@@ -250,7 +250,7 @@ class JobQueue:
         args = ["update-database"]
         if mode == "incremental":
             args.append("--updated-only")
-        elif mode == "search":
+        elif mode in ("search", "update_search"):
             args.append(f"--search={job.params.get('query', '')}")
         elif mode == "clear":
             args.append("--clear")
