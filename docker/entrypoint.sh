@@ -14,6 +14,69 @@ SAVES_DIRECTORY="${SAVES_DIRECTORY:-/saves}"
 
 umask "$UMASK"
 
+# ---------------------------------------------------------------------------
+# The CLI is not baked into the image: upstream publishes a self-contained phar
+# per release, which we cache under /config so only the first start (and a
+# version change) needs GitHub. The filename carries the version, so bumping
+# GOG_DOWNLOADER_VERSION fetches alongside the old copy rather than over it.
+# ---------------------------------------------------------------------------
+GOGDL_CLI_DIR="${GOGDL_CLI_DIR:-${CONFIG_DIRECTORY}/cli}"
+GOGDL_VERSION="${GOG_DOWNLOADER_VERSION:-${GOGDL_PINNED_VERSION:-}}"
+
+if [ -z "$GOGDL_VERSION" ]; then
+    echo "[gogui] no CLI version configured; set GOG_DOWNLOADER_VERSION" >&2
+    exit 1
+fi
+
+# The pinned checksum only describes the pinned release. If the version was
+# overridden without a matching GOG_DOWNLOADER_SHA256, there is nothing to
+# verify against and we say so rather than failing on a mismatch.
+GOGDL_SHA256="${GOG_DOWNLOADER_SHA256:-}"
+if [ -z "$GOGDL_SHA256" ] && [ "$GOGDL_VERSION" = "${GOGDL_PINNED_VERSION:-}" ]; then
+    GOGDL_SHA256="${GOGDL_PINNED_SHA256:-}"
+fi
+
+GOG_DOWNLOADER_PHAR="${GOGDL_CLI_DIR}/gog-downloader-${GOGDL_VERSION}.phar"
+export GOG_DOWNLOADER_PHAR
+
+fetch_cli() {
+    url="https://github.com/RikudouSage/GogDownloader/releases/download/${GOGDL_VERSION}/gog-downloader"
+    tmp="${GOG_DOWNLOADER_PHAR}.part.$$"
+
+    mkdir -p "$GOGDL_CLI_DIR"
+    echo "[gogui] downloading gog-downloader ${GOGDL_VERSION}"
+    if ! curl -fsSL --retry 3 --retry-delay 2 -o "$tmp" "$url"; then
+        rm -f "$tmp"
+        echo "[gogui] download failed: $url" >&2
+        return 1
+    fi
+
+    if [ -n "$GOGDL_SHA256" ]; then
+        if ! echo "${GOGDL_SHA256}  ${tmp}" | sha256sum -c - >/dev/null 2>&1; then
+            rm -f "$tmp"
+            echo "[gogui] checksum mismatch for gog-downloader ${GOGDL_VERSION}" >&2
+            return 1
+        fi
+    else
+        echo "[gogui] no checksum for ${GOGDL_VERSION}; skipping verification" >&2
+    fi
+
+    chmod 0644 "$tmp"
+    if ! php "$tmp" --version >/dev/null 2>&1; then
+        rm -f "$tmp"
+        echo "[gogui] downloaded file is not a runnable gog-downloader phar" >&2
+        return 1
+    fi
+    mv "$tmp" "$GOG_DOWNLOADER_PHAR"
+    echo "[gogui] gog-downloader ${GOGDL_VERSION} ready"
+}
+
+# A failed fetch is not fatal: the web UI still starts and reports the missing
+# CLI per job, which beats a container that restart-loops with no way to see why.
+if [ ! -f "$GOG_DOWNLOADER_PHAR" ]; then
+    fetch_cli || echo "[gogui] continuing without the CLI; fix the problem above and restart" >&2
+fi
+
 if [ "$(id -u)" = "0" ]; then
     if ! getent group "$PGID" >/dev/null; then
         groupadd -g "$PGID" gogui

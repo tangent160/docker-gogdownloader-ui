@@ -3,8 +3,9 @@
 A mobile-first web UI for [RikudouSage/GogDownloader](https://github.com/RikudouSage/GogDownloader),
 packaged as a Docker container and designed for the Unraid Docker UI.
 
-The container does not reimplement any GOG logic. It ships the upstream PHP CLI
-(a git submodule pinned to a release tag), drives it as a child process, and
+The container does not reimplement any GOG logic. It runs the upstream PHP CLI
+— the released `gog-downloader` phar, which the container downloads into
+`/config/cli` on first start — drives it as a child process, and
 reads the CLI's own SQLite database directly for the library — the same approach
 as the Android front-end this UI is modelled on.
 
@@ -42,7 +43,7 @@ outside your LAN. The session is a live GOG login.
 ### Docker Compose
 
 ```bash
-git clone --recurse-submodules https://github.com/tangent160/docker-gogdownloader-ui.git
+git clone https://github.com/tangent160/docker-gogdownloader-ui.git
 ```
 
 ```bash
@@ -54,12 +55,11 @@ Then open <http://localhost:8080>.
 ### Building the image directly
 
 ```bash
-git submodule update --init
-```
-
-```bash
 docker build -t gogdownloader-ui .
 ```
+
+The image contains only the web UI and a PHP runtime; the CLI is fetched at
+first start, so the build itself needs no access to GitHub.
 
 ## Configuration
 
@@ -91,14 +91,24 @@ docker exec gogdownloader-ui gog-downloader games
 
 ## Updating the bundled CLI
 
-`vendor/GogDownloader` is a submodule pinned to a release tag — currently
-**v1.15.1**. To move it:
+On first start the container downloads the `gog-downloader` phar from the
+upstream GitHub release into `/config/cli/gog-downloader-<tag>.phar` and reuses
+it on every later start. Only that first start needs internet access for the
+CLI itself; the checksum of the built-in version is verified after download.
+
+The version used is `GOGDL_PINNED_VERSION` in the `Dockerfile` — currently
+**v1.15.1**. To run a different release without rebuilding, set
+`GOG_DOWNLOADER_VERSION` (and optionally `GOG_DOWNLOADER_SHA256`, since the
+built-in checksum only describes the built-in version):
 
 ```bash
-git -C vendor/GogDownloader fetch --tags && git -C vendor/GogDownloader checkout <tag>
+curl -fsSL https://github.com/RikudouSage/GogDownloader/releases/download/<tag>/gog-downloader | sha256sum
 ```
 
-Commit the new submodule revision and rebuild the image.
+In the Unraid template these are the advanced **CLI Version** and **CLI
+Checksum** fields. To change the default for everyone, bump
+`GOGDL_PINNED_VERSION` and `GOGDL_PINNED_SHA256` in the `Dockerfile` and push a
+new image.
 
 ## Security notes
 

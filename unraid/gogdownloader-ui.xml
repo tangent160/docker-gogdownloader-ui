@@ -22,7 +22,8 @@
     [olist]
     [*]Point [b]Downloads[/b] at the share where you want your games stored.
     [*]Leave [b]Config[/b] on the default appdata path — it holds the gog-downloader database with your login token and synced library, and must persist across restarts.
-    [*]Start the container, open the WebUI and log in to GOG using the code login.
+    [*]Start the container. On first start it downloads the gog-downloader CLI release from GitHub into the Config path (about 14 MB) — this needs internet access and only happens once.
+    [*]Open the WebUI and log in to GOG using the code login.
     [*]Run a sync, then download whatever you like.
     [/olist]
 
@@ -58,6 +59,10 @@
   <Config Name="UMASK" Target="UMASK" Default="022" Mode="" Description="File mode mask applied to downloaded files." Type="Variable" Display="advanced" Required="false" Mask="false">022</Config>
 
   <Config Name="Secure Cookie" Target="WEBUI_COOKIE_SECURE" Default="false" Mode="" Description="Set to true when the UI is served over HTTPS through a reverse proxy, so the session cookie is marked Secure." Type="Variable" Display="advanced" Required="false" Mask="false">false</Config>
+
+  <Config Name="CLI Version" Target="GOG_DOWNLOADER_VERSION" Default="" Mode="" Description="Release tag of RikudouSage/GogDownloader to run, e.g. v1.15.1. Leave empty to use the version this image was built against. The phar is cached under /config/cli, so changing this downloads the new version on the next start." Type="Variable" Display="advanced" Required="false" Mask="false"/>
+
+  <Config Name="CLI Checksum" Target="GOG_DOWNLOADER_SHA256" Default="" Mode="" Description="Optional SHA-256 of the gog-downloader release asset, verified after download. Only needed if you set CLI Version to something other than the built-in default; leave empty otherwise." Type="Variable" Display="advanced" Required="false" Mask="false"/>
 
   <Config Name="TZ" Target="TZ" Default="Etc/UTC" Mode="" Description="Container timezone." Type="Variable" Display="advanced" Required="false" Mask="false">Etc/UTC</Config>
 </Container>

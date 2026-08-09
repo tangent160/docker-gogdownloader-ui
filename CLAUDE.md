@@ -11,7 +11,11 @@ process and its own SQLite database is read directly for everything the UI shows
 
 - Backend: Python 3 / FastAPI (`app/gogui/`), served by uvicorn.
 - Frontend: vanilla JS + CSS, no build step (`app/gogui/static/`).
-- CLI: `vendor/GogDownloader`, a submodule pinned to a release tag (v1.15.1).
+- CLI: the upstream release phar. It is **not** in the image or the repo — the
+  entrypoint downloads it into `/config/cli` on first start, pinned by
+  `GOGDL_PINNED_VERSION` / `GOGDL_PINNED_SHA256` and overridable per-container
+  with `GOG_DOWNLOADER_VERSION` / `GOG_DOWNLOADER_SHA256`. `/app/gog-downloader`
+  is a shim that execs `php "$GOG_DOWNLOADER_PHAR"`, exported by the entrypoint.
 
 ## Layout
 
@@ -23,7 +27,7 @@ process and its own SQLite database is read directly for everything the UI shows
 | `app/gogui/db.py` | Read-only access to gog-downloader's SQLite file. |
 | `app/gogui/config.py` | Env-derived paths, and the UI's own settings store. |
 | `app/gogui/filters.py` | DB value → CLI `--os`/`--language` argument mapping. |
-| `docker/entrypoint.sh` | PUID/PGID drop, then starts uvicorn. |
+| `docker/entrypoint.sh` | Fetches/caches the CLI phar, PUID/PGID drop, then starts uvicorn. |
 | `unraid/` | Community Applications template. |
 
 ## Rules that are load-bearing
@@ -80,7 +84,7 @@ queries widen it (720px widens the grid, 960px moves the tab bar to the side).
 
 There is no test runner in the repo. To exercise the app without a GOG account,
 point `GOG_DOWNLOADER_BIN` at a stub script and seed a database with the schema
-from `vendor/GogDownloader/src/Migration/`:
+from upstream's `src/Migration/`:
 
 ```bash
 CONFIG_DIRECTORY=/tmp/cfg DOWNLOAD_DIRECTORY=/tmp/dl SAVES_DIRECTORY=/tmp/sv \
@@ -89,6 +93,8 @@ CONFIG_DIRECTORY=/tmp/cfg DOWNLOAD_DIRECTORY=/tmp/dl SAVES_DIRECTORY=/tmp/sv \
 
 ## Updating upstream
 
-`vendor/GogDownloader` is pinned to a release tag. Fetch tags, check out the new
-tag, commit the submodule revision, rebuild. Check the migrations for schema
-changes and the command help for new or renamed flags.
+Bump `GOGDL_PINNED_VERSION` and `GOGDL_PINNED_SHA256` in the `Dockerfile`
+(`curl -fsSL <release-url> | sha256sum`) and push a new image; existing
+containers fetch the new phar on their next start, keeping the old one cached
+beside it. Check upstream's migrations for schema changes and the command help
+for new or renamed flags.

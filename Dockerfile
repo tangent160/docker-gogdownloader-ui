@@ -1,26 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # ---------------------------------------------------------------------------
-# Stage 1: install the CLI's PHP dependencies from the pinned submodule.
-# ---------------------------------------------------------------------------
-FROM composer:2 AS cli-build
-
-WORKDIR /build
-# Copy the manifests first so the dependency install layer caches independently
-# of the CLI's own source.
-COPY vendor/GogDownloader/composer.json vendor/GogDownloader/composer.lock ./
-RUN composer install --no-dev --no-scripts --no-autoloader --prefer-dist --ignore-platform-reqs
-
-COPY vendor/GogDownloader/ ./
-# Not --classmap-authoritative: src/DTO/DownloadDescription.php declares no
-# class (it is a class_alias shim), so it never lands in the classmap and an
-# authoritative loader refuses the PSR-4 fallback that would run the alias —
-# which breaks Symfony's service autodiscovery and every CLI command with it.
-RUN composer dump-autoload --no-dev --optimize \
-    && rm -rf .git .github tests windows setup.iss shell.nix
-
-# ---------------------------------------------------------------------------
-# Stage 2: runtime — PHP CLI for gog-downloader, Python for the web UI.
+# Runtime — PHP for gog-downloader, Python for the web UI.
+#
+# The CLI itself is not baked in: upstream publishes a self-contained phar per
+# release, and the entrypoint downloads it into /config on first start. See
+# GOGDL_PINNED_* below.
 # ---------------------------------------------------------------------------
 FROM php:8.4-cli-bookworm
 
@@ -33,14 +18,23 @@ ENV CONFIG_DIRECTORY=/config \
     PUID=99 \
     PGID=100 \
     UMASK=022 \
-    WEBUI_PORT=8080
+    WEBUI_PORT=8080 \
+    GOG_DOWNLOADER_VERSION= \
+    GOG_DOWNLOADER_SHA256=
+
+# The CLI release this image was built against. GOG_DOWNLOADER_VERSION (empty
+# above, so the template can override it) falls back to this; the checksum is
+# only enforced when the resolved version is this one.
+ENV GOGDL_PINNED_VERSION=v1.15.1 \
+    GOGDL_PINNED_SHA256=3a8e677b69d7ba70bdf787b709857f9552bf2c404d2e716082ed188836a0a27c \
+    GOGDL_CLI_DIR=/config/cli
 
 # simplexml + pdo_sqlite are required by gog-downloader; pcntl lets it handle
 # signals so an in-flight download stops cleanly when a job is cancelled.
 RUN set -eux; \
     apt-get update; \
     apt-get install -y --no-install-recommends \
-        libxml2-dev libsqlite3-dev ca-certificates gosu tini \
+        libxml2-dev libsqlite3-dev ca-certificates curl gosu tini \
         python3 python3-pip python3-venv; \
     docker-php-ext-install -j"$(nproc)" simplexml pcntl pdo_sqlite; \
     echo 'memory_limit = -1' > /usr/local/etc/php/conf.d/zz-memory-limit.ini; \
@@ -52,14 +46,15 @@ RUN python3 -m venv "$VIRTUAL_ENV"
 COPY app/requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
-COPY --from=cli-build /build /app/gog-downloader-src
 COPY app/gogui /app/gogui
 COPY docker/entrypoint.sh /entrypoint.sh
 
-# gog-downloader is invoked as a plain command; bin/app.php is the CLI entry.
+# gog-downloader is invoked as a plain command. The shim resolves the phar at
+# call time: the entrypoint exports GOG_DOWNLOADER_PHAR once it has fetched it.
 RUN set -eux; \
-    printf '#!/bin/sh\nexec php /app/gog-downloader-src/bin/app.php "$@"\n' > /app/gog-downloader; \
+    printf '#!/bin/sh\nphar="${GOG_DOWNLOADER_PHAR:-}"\nif [ -z "$phar" ] || [ ! -f "$phar" ]; then\n  echo "gog-downloader CLI is not available yet (download failed?); check the container log" >&2\n  exit 127\nfi\nexec php "$phar" "$@"\n' > /app/gog-downloader; \
     chmod +x /app/gog-downloader /entrypoint.sh; \
+    ln -s /app/gog-downloader /usr/local/bin/gog-downloader; \
     mkdir -p /config /downloads /saves
 
 WORKDIR /app
