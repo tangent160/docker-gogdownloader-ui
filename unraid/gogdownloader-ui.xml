@@ -28,6 +28,8 @@
     [/olist]
 
     [b]Note:[/b] setting a WebUI username and password is strongly recommended if the container is reachable from outside your LAN — the session is a live GOG login.
+
+    [b]Reporting a problem:[/b] Settings &gt; About shows the UI version, the commit it was built from and the gog-downloader CLI version in use. Include those in the issue.
   </Overview>
   <Category>Downloaders: MediaApp:Other</Category>
   <WebUI>http://[IP]:[PORT:8080]/</WebUI>
