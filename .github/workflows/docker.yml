@@ -1,36 +1,29 @@
-name: Build image
+name: Release
 
+# Tags only. Nothing else builds — not pushes to main, not pull requests — so
+# every run of this workflow produces a published release.
 on:
   push:
-    branches: [main]
     tags: ["v*"]
-  pull_request:
-    branches: [main]
 
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/gogdownloader-ui
 
 jobs:
-  # __version__ is the source of truth; a v* tag that disagrees with it would
+  # __version__ is the source of truth; a tag that disagrees with it would
   # publish an image whose About card lies about what it is.
   version:
     runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.read.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-      - id: read
+      - name: Tag must match __version__
         run: |
           version=$(python3 -c "import re,pathlib; print(re.search(r'__version__ = \"([^\"]+)\"', pathlib.Path('app/gogui/__init__.py').read_text()).group(1))")
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "gogui version: $version"
-      - name: Tag must match __version__
-        if: startsWith(github.ref, 'refs/tags/v')
-        run: |
           tag="${GITHUB_REF_NAME#v}"
-          if [ "$tag" != "${{ steps.read.outputs.version }}" ]; then
-            echo "::error::tag $GITHUB_REF_NAME does not match __version__ ${{ steps.read.outputs.version }}"
+          echo "tag $GITHUB_REF_NAME, __version__ $version"
+          if [ "$tag" != "$version" ]; then
+            echo "::error::tag $GITHUB_REF_NAME does not match __version__ $version"
             exit 1
           fi
 
@@ -48,9 +41,7 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - uses: docker/setup-buildx-action@v3
 
-      # Pull requests build but never publish.
       - name: Log in to GHCR
-        if: github.event_name != 'pull_request'
         uses: docker/login-action@v3
         with:
           registry: ${{ env.REGISTRY }}
@@ -65,16 +56,15 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            type=ref,event=branch
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
-            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=latest
 
       - uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name != 'pull_request' }}
+          push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
@@ -85,7 +75,6 @@ jobs:
 
   # Publishes the tag's CHANGELOG section as the release body.
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
     needs: build
     runs-on: ubuntu-latest
     permissions:

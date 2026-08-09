@@ -151,8 +151,10 @@ nothing should be stale by the time it happens. Work through these in order.
    git tag vx.y.z && git push && git push origin vx.y.z
    ```
 
-   Pushing the tag is what triggers the release; a commit without it publishes
-   only `latest`.
+   Pushing the tag is what triggers the release, and it is the *only* thing
+   that runs the workflow — a commit to `main` builds nothing, so a broken
+   `Dockerfile` surfaces only once the tag is pushed. Verify a Dockerfile
+   change with a local `docker build` before step 7.
 
 ## Updating upstream
 

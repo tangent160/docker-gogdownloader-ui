@@ -143,7 +143,7 @@ Published image tags:
 
 | Tag | Moves | Use it for |
 | --- | --- | --- |
-| `latest` | every push to `main` | trying the newest work |
+| `latest` | every tagged release | tracking releases, the Unraid default |
 | `0.1` | every patch release in that line | staying current within a line |
 | `0.1.0` | never | pinning exactly |
 
@@ -155,8 +155,14 @@ To cut a release:
 3. Bump `__version__` in `app/gogui/__init__.py` to the same number.
 4. Commit, then tag `vx.y.z` and push both the commit and the tag.
 
-CI fails the build if a `v*` tag does not match `__version__`, then publishes
-the image tags and a GitHub Release whose body is that changelog section.
+Pushing a `v*` tag is the only thing that builds an image. Ordinary pushes to
+`main` and pull requests run no workflow at all, so `latest` can never move
+ahead of a release. The tag run fails if the tag does not match `__version__`,
+then publishes the image tags and a GitHub Release whose body is that
+changelog section.
+
+Because nothing builds before the tag, a commit that breaks the `Dockerfile`
+is only caught at release time. Build it locally first if you have touched it.
 
 ## Security notes
 

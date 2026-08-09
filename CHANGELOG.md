@@ -10,6 +10,13 @@ Settings.
 
 ## [Unreleased]
 
+### Changed
+- Images are built and published only from a `v*` tag. Pushes to `main` and
+  pull requests no longer run any workflow, so `latest` now tracks the newest
+  release instead of the newest commit.
+- The Unraid template's overview points at Settings > About for the version
+  details to include in a bug report.
+
 ## [0.1.0] - 2026-08-09
 
 First public release. The version stays below 1.0 while the container's
