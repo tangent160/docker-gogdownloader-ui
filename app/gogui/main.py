@@ -50,7 +50,9 @@ queue = JobQueue(cli, config, settings_store)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     queue.start()
+    priming = asyncio.create_task(_prime_cli_version())
     yield
+    priming.cancel()
     await queue.stop()
 
 
@@ -119,7 +121,7 @@ async def status(request: Request) -> dict[str, Any]:
             "configDir": str(config.config_dir),
             "coversEnabled": config.covers_enabled,
             "busy": queue.busy,
-            "version": await cli.version(),
+            "version": await _cli_version(),
             "appVersion": __version__,
             "appCommit": config.commit,
             "appBuildDate": config.build_date,
@@ -127,6 +129,45 @@ async def status(request: Request) -> dict[str, Any]:
         }
     )
     return body
+
+
+#: Last version string the CLI reported. Asking it costs a PHP process, and it
+#: only changes when the user switches releases, so it is remembered.
+_cli_version_cache: str = ""
+
+
+async def _cli_version(force: bool = False) -> str:
+    """The CLI's version, without ever running it alongside a job.
+
+    ``--version`` does not touch the database, but running it during a download
+    would still put two CLI processes in flight, so a busy container answers
+    from the cache instead. Callers already holding ``queue.exclusive()`` pass
+    ``force`` to refresh it.
+    """
+    global _cli_version_cache
+    if force:
+        _cli_version_cache = await cli.version()
+    elif not _cli_version_cache:
+        async with queue.try_exclusive() as acquired:
+            if acquired:
+                _cli_version_cache = await cli.version()
+    return _cli_version_cache or "unknown"
+
+
+async def _prime_cli_version() -> None:
+    """Fill the version cache once at startup.
+
+    Without this a container that starts straight into a long job answers
+    ``unknown`` until the job ends, since ``/api/status`` refuses to wait for
+    the gate. Waiting is free here — nothing is blocked on this task — so it
+    takes the gate properly, and it runs in the background so a slow PHP
+    start does not delay the first request.
+    """
+    try:
+        async with queue.exclusive():
+            await _cli_version(force=True)
+    except Exception:  # noqa: BLE001 — a broken phar must not break startup
+        pass
 
 
 def _disk_free(path: Path) -> int | None:
@@ -161,7 +202,8 @@ def _require_idle() -> None:
 @app.post("/api/gog/code-login", dependencies=[Depends(authenticated)])
 async def gog_code_login(payload: CodeLoginRequest) -> dict[str, Any]:
     _require_idle()
-    result = await cli.code_login(payload.code.strip())
+    async with queue.exclusive():
+        result = await cli.code_login(payload.code.strip())
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error_message)
     return {"gogLoggedIn": database.is_logged_in()}
@@ -170,7 +212,8 @@ async def gog_code_login(payload: CodeLoginRequest) -> dict[str, Any]:
 @app.post("/api/gog/login", dependencies=[Depends(authenticated)])
 async def gog_password_login(payload: PasswordLoginRequest) -> dict[str, Any]:
     _require_idle()
-    result = await cli.password_login(payload.email, payload.password)
+    async with queue.exclusive():
+        result = await cli.password_login(payload.email, payload.password)
     if not result.success:
         raise HTTPException(status_code=400, detail=result.error_message)
     return {"gogLoggedIn": database.is_logged_in()}
@@ -382,6 +425,11 @@ async def job_stream(request: Request) -> StreamingResponse:
                     # Comment frame; keeps proxies from closing an idle stream.
                     yield ": keepalive\n\n"
                     continue
+                if event is None:
+                    # Dropped for falling behind. Ending the response is what
+                    # makes EventSource reconnect and resync the job list;
+                    # staying open would leave the tab frozen.
+                    break
                 yield f"data: {json.dumps(event)}\n\n"
         finally:
             queue.events.unsubscribe(subscription)
@@ -456,17 +504,20 @@ async def set_cli_version(payload: CliVersionRequest) -> dict[str, Any]:
     version = payload.version.strip()
     if version and not TAG_PATTERN.match(version):
         raise HTTPException(status_code=400, detail=f"Not a valid release tag: {version}")
-    if version and not cli_releases.is_installed(version):
-        try:
-            await cli_releases.install(version)
-        except ReleaseError as exc:
-            raise HTTPException(status_code=502, detail=str(exc)) from exc
-    settings_store.update({"cli_version": version})
-    return {
-        "active": _active_cli_version(),
-        "installed": cli_releases.installed(),
-        "version": await cli.version(),
-    }
+    # The gate covers the install too: verifying a phar runs it, and the
+    # switch must not land while a job is using the old one.
+    async with queue.exclusive():
+        if version and not cli_releases.is_installed(version):
+            try:
+                await cli_releases.install(version)
+            except ReleaseError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
+        settings_store.update({"cli_version": version})
+        return {
+            "active": _active_cli_version(),
+            "installed": cli_releases.installed(),
+            "version": await _cli_version(force=True),
+        }
 
 
 @app.delete("/api/cli/version/{version}", dependencies=[Depends(authenticated)])
@@ -483,19 +534,20 @@ async def remove_cli_version(version: str) -> dict[str, Any]:
             status_code=400,
             detail=f"{version} is the version this image ships with and cannot be removed.",
         )
-    try:
-        cli_releases.remove(version)
-    except ReleaseError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-    # Removing the version in use falls back to the image default rather than
-    # leaving the UI pointing at a file that is gone.
-    if str(settings_store.get("cli_version") or "") == version:
-        settings_store.update({"cli_version": ""})
-    return {
-        "active": _active_cli_version(),
-        "installed": cli_releases.installed(),
-        "version": await cli.version(),
-    }
+    async with queue.exclusive():
+        try:
+            cli_releases.remove(version)
+        except ReleaseError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
+        # Removing the version in use falls back to the image default rather
+        # than leaving the UI pointing at a file that is gone.
+        if str(settings_store.get("cli_version") or "") == version:
+            settings_store.update({"cli_version": ""})
+        return {
+            "active": _active_cli_version(),
+            "installed": cli_releases.installed(),
+            "version": await _cli_version(force=True),
+        }
 
 
 @app.get("/api/backup/export", dependencies=[Depends(authenticated)])
@@ -513,10 +565,14 @@ async def export_backup() -> FileResponse:
 @app.post("/api/backup/import", dependencies=[Depends(authenticated)])
 async def import_backup(file: UploadFile) -> dict[str, Any]:
     _require_idle()
-    try:
-        import_database(await file.read(), config.database_file)
-    except InvalidBackup as error:
-        raise HTTPException(status_code=400, detail=str(error)) from error
+    # Read the upload first, then swap under the gate: replacing the database
+    # beneath a job that has already opened it would lose whatever it wrote.
+    upload = await file.read()
+    async with queue.exclusive():
+        try:
+            import_database(upload, config.database_file)
+        except InvalidBackup as error:
+            raise HTTPException(status_code=400, detail=str(error)) from error
     return {"gogLoggedIn": database.is_logged_in()}
 
 

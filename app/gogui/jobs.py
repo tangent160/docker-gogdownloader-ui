@@ -12,10 +12,11 @@ import asyncio
 import itertools
 import time
 from collections import deque
+from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any
+from typing import Any, AsyncIterator
 
 from .cli import GogCli, parse_progress
 from .config import Config, SettingsStore
@@ -80,28 +81,68 @@ class Job:
         }
 
 
+class Subscription:
+    """One browser's event stream.
+
+    Dropping a stalled client is not enough on its own: the reader would sit on
+    an empty queue forever and the tab would show frozen job state behind a
+    stream that still looks healthy. Closing therefore hands the reader a
+    sentinel so it can end the response and let EventSource reconnect, which
+    resyncs from the full job list.
+    """
+
+    def __init__(self, maxsize: int = 64) -> None:
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=maxsize)
+        self.closed = False
+
+    async def get(self) -> dict[str, Any] | None:
+        """The next event, or ``None`` once the subscription is closed."""
+        return await self._queue.get()
+
+    def put(self, event: dict[str, Any]) -> bool:
+        try:
+            self._queue.put_nowait(event)
+            return True
+        except asyncio.QueueFull:
+            self.close()
+            return False
+
+    def close(self) -> None:
+        if self.closed:
+            return
+        self.closed = True
+        # The queue is full in the overflow case, so make room for the sentinel.
+        try:
+            self._queue.get_nowait()
+        except asyncio.QueueEmpty:
+            pass
+        try:
+            self._queue.put_nowait(None)
+        except asyncio.QueueFull:  # pragma: no cover — room was just made
+            pass
+
+
 class EventBus:
     """Fan-out of job updates to every open browser tab."""
 
     def __init__(self) -> None:
-        self._subscribers: set[asyncio.Queue] = set()
+        self._subscribers: set[Subscription] = set()
 
-    def subscribe(self) -> asyncio.Queue:
-        queue: asyncio.Queue = asyncio.Queue(maxsize=64)
-        self._subscribers.add(queue)
-        return queue
+    def subscribe(self) -> Subscription:
+        subscription = Subscription()
+        self._subscribers.add(subscription)
+        return subscription
 
-    def unsubscribe(self, queue: asyncio.Queue) -> None:
-        self._subscribers.discard(queue)
+    def unsubscribe(self, subscription: Subscription) -> None:
+        self._subscribers.discard(subscription)
+        subscription.close()
 
     def publish(self, event: dict[str, Any]) -> None:
-        for queue in list(self._subscribers):
-            try:
-                queue.put_nowait(event)
-            except asyncio.QueueFull:
-                # A stalled client must not slow down the worker; it will
-                # resync from /api/jobs when it reconnects.
-                self._subscribers.discard(queue)
+        for subscription in list(self._subscribers):
+            # A stalled client must not slow down the worker: it is dropped and
+            # woken, and resyncs from /api/jobs when EventSource reconnects.
+            if not subscription.put(event):
+                self._subscribers.discard(subscription)
 
 
 class JobQueue:
@@ -114,6 +155,12 @@ class JobQueue:
         self._ids = itertools.count(1)
         self._wakeup = asyncio.Event()
         self._worker: asyncio.Task | None = None
+        #: Held for the whole of a CLI invocation, by the worker and by the
+        #: endpoints that run the CLI outside the queue. Checking ``busy`` is
+        #: not enough for those: they await something long afterwards, and a
+        #: job enqueued during that await would otherwise start a second
+        #: process against the same database.
+        self._gate = asyncio.Lock()
         self.events = EventBus()
 
     # ----- lifecycle -------------------------------------------------
@@ -158,6 +205,33 @@ class JobQueue:
     @property
     def busy(self) -> bool:
         return any(not self._jobs[job_id].state.finished for job_id in self._order)
+
+    @asynccontextmanager
+    async def exclusive(self) -> AsyncIterator[None]:
+        """Run the CLI outside the queue with the worker held off.
+
+        Callers still check ``busy`` first so a user gets an immediate 409
+        instead of a request that blocks for the length of a download; this
+        closes the window between that check and the work itself.
+        """
+        async with self._gate:
+            yield
+
+    @asynccontextmanager
+    async def try_exclusive(self) -> AsyncIterator[bool]:
+        """:meth:`exclusive` for callers that must never wait.
+
+        Yields ``False`` and runs nothing when a CLI process is already in
+        flight. An endpoint the UI polls cannot use ``exclusive``: the gate is
+        held for the whole of a download, so waiting on it would stall the
+        poll for hours. There is no await between the check and the acquire,
+        so nothing can take the gate in between.
+        """
+        if self._gate.locked():
+            yield False
+            return
+        async with self._gate:
+            yield True
 
     def cancel(self, job_id: int) -> bool:
         job = self._jobs.get(job_id)
@@ -212,7 +286,10 @@ class JobQueue:
 
         try:
             args = self._build_args(job)
-            result = await self._cli.run(args, on_line=on_line, cancel_event=job.cancel_event)
+            async with self._gate:
+                result = await self._cli.run(
+                    args, on_line=on_line, cancel_event=job.cancel_event
+                )
         except Exception as error:  # noqa: BLE001 — surfaced to the user verbatim
             job.error = str(error)
             self._finish(job, JobState.FAILED)

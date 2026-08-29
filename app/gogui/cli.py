@@ -160,12 +160,15 @@ class GogCli:
             if not chunk:
                 break
             buffer.extend(chunk)
+            # Split on the bytes, not on decoded text: a multi-byte character
+            # straddling a chunk boundary would otherwise be decoded with
+            # errors="replace" and the replacement re-encoded into the
+            # remainder, corrupting it permanently.
             # Progress bars redraw with a bare \r, so both are line breaks here.
-            buffer_text = buffer.decode("utf-8", errors="replace")
-            parts = re.split(r"[\r\n]", buffer_text)
-            buffer = bytearray(parts.pop().encode("utf-8"))
-            for part in parts:
-                line = part.strip()
+            parts = re.split(rb"[\r\n]", bytes(buffer))
+            buffer = bytearray(parts.pop())
+            for raw in parts:
+                line = raw.decode("utf-8", errors="replace").strip()
                 if not line:
                     continue
                 collected.append(line)
