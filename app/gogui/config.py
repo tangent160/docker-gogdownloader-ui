@@ -97,8 +97,13 @@ config = Config()
 # here are passed straight to the CLI, so they mirror its flag names.
 DEFAULT_SETTINGS: dict[str, object] = {
     "include_hidden": False,
-    "library_sort": "title",  # title | recent | size
-    "sync_mode": "incremental",  # full | incremental | search — how the library was populated
+    # How the library was populated: full | incremental | search. Written when a
+    # sync finishes, not when it is queued. "search" means the library is partial.
+    "sync_mode": "incremental",
+    # Appearance, shared by every browser: system | light | dark, and an accent
+    # theme id from ACCENT_THEMES in static/app.js.
+    "theme": "system",
+    "accent_theme": "sage",
     "retry": 3,
     "idle_timeout": 3,
     "chunk_size": 10,

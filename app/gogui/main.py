@@ -44,7 +44,7 @@ cli = GogCli(config, phar=_selected_phar)
 database = GameDatabase(config.database_file)
 covers = CoverStore(config.covers_dir, enabled=config.covers_enabled)
 authenticator = Authenticator(config)
-queue = JobQueue(cli, config, settings_store)
+queue = JobQueue(cli, config, settings_store, library_empty=lambda: not database.games())
 
 
 @asynccontextmanager
@@ -225,18 +225,25 @@ async def gog_password_login(payload: PasswordLoginRequest) -> dict[str, Any]:
 
 
 @app.get("/api/library", dependencies=[Depends(authenticated)])
-async def library(q: str = "", sort: str = "title") -> dict[str, Any]:
+async def library(q: str = "", sort: str = "title", direction: str = "") -> dict[str, Any]:
+    """``sort`` is title, added or size. ``direction`` is asc or desc; when it
+    is left out, each sort uses its natural order: A to Z, newest first,
+    largest first."""
     games = database.games()
     query = q.strip().lower()
     if query:
         games = [game for game in games if query in game.title.lower()]
     if sort == "size":
-        games.sort(key=lambda game: game.total_size, reverse=True)
-    elif sort == "recent":
+        key, default = (lambda game: game.total_size), "desc"
+    elif sort in ("added", "recent"):
         # The db has no timestamp; insertion order (rowid) is the closest proxy.
-        games.sort(key=lambda game: game.row_id, reverse=True)
+        # "recent" is the name this sort had before 0.2.0.
+        key, default = (lambda game: game.row_id), "desc"
     else:
-        games.sort(key=lambda game: game.title.lower())
+        key, default = (lambda game: game.title.lower()), "asc"
+    if direction not in ("asc", "desc"):
+        direction = default
+    games.sort(key=key, reverse=direction == "desc")
     return {
         "games": [
             {
@@ -245,6 +252,7 @@ async def library(q: str = "", sort: str = "title") -> dict[str, Any]:
                 "title": game.title,
                 "slug": game.slug,
                 "totalSize": game.total_size,
+                "platforms": list(game.platforms),
             }
             for game in games
         ]
@@ -313,7 +321,7 @@ async def languages() -> dict[str, Any]:
 
 
 class SyncRequest(BaseModel):
-    mode: str = "incremental"  # full | incremental | search | update_search | clear
+    mode: str = "incremental"  # full | incremental | search | clear
     query: str = ""
 
 
@@ -343,22 +351,17 @@ async def job_log(job_id: int) -> dict[str, Any]:
 
 @app.post("/api/jobs/sync", dependencies=[Depends(authenticated)])
 async def enqueue_sync(payload: SyncRequest) -> dict[str, Any]:
-    if payload.mode not in ("full", "incremental", "search", "update_search", "clear"):
+    if payload.mode not in ("full", "incremental", "search", "clear"):
         raise HTTPException(status_code=400, detail="Unknown sync mode.")
-    if payload.mode in ("search", "update_search") and not payload.query.strip():
+    if payload.mode == "search" and not payload.query.strip():
         raise HTTPException(status_code=400, detail="A search sync needs a search term.")
-    # A --search sync only fetches matching games; remember that so the UI can
-    # warn that the library is partial. "update_search" is a targeted refresh of
-    # games the user already has, so it must not downgrade a full library to
-    # "partial" — leave sync_mode alone for it.
-    if payload.mode != "update_search":
-        settings_store.update({"sync_mode": payload.mode if payload.mode != "clear" else "full"})
+    # sync_mode is written by the queue when the sync succeeds, so a failed or
+    # cancelled sync does not change the partial-library warning.
     titles = {
         "full": "Full library sync",
         "incremental": "Incremental sync",
         "clear": "Clear and resync library",
         "search": f"Sync matching “{payload.query.strip()}”",
-        "update_search": f"Update matching “{payload.query.strip()}”",
     }
     job = queue.enqueue(
         JobType.SYNC, titles[payload.mode], mode=payload.mode, query=payload.query.strip()
@@ -392,7 +395,7 @@ async def enqueue_download(payload: DownloadRequest) -> dict[str, Any]:
 
 @app.post("/api/jobs/saves", dependencies=[Depends(authenticated)])
 async def enqueue_saves() -> dict[str, Any]:
-    job = queue.enqueue(JobType.SAVES, "Cloud saves")
+    job = queue.enqueue(JobType.SAVES, "Download cloud saves")
     return {"job": job.public()}
 
 

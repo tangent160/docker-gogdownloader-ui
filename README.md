@@ -14,14 +14,17 @@ method as the Android front-end that this UI is modelled on.
 
 - **GOG login in the browser** — code login (recommended) or email and
   password.
-- **Library** — a grid of covers. You can search it, and you can sort it by
-  title, by recently added, or by total size.
+- **Library** — a grid of covers, with a coloured block when a game has no
+  cover. You can search it, and you can sort it by title, by date added, or by
+  total size, in either direction.
 - **Selection per game** — select exactly which installers, patches and extras
   you want. Platform chips and language chips narrow a game that has more than
   one variant.
 - **Live progress** — jobs stream to each open tab with server-sent events. The
   output of the CLI is available for each job.
-- **Sync modes** — incremental, full, search-only, and clear-and-resync.
+- **Sync modes** — changed games, full, search by title, and clear and resync.
+- **Light and dark mode** with a choice of accent colours.
+- **Responsive** — one layout for phone, tablet and desktop.
 - **Cloud saves** and **extras-only** downloads.
 - **Backup** — export and import the database of gog-downloader to move between
   installations. The file holds your login token and your full synced library.
@@ -140,24 +143,24 @@ report a problem. `GET /api/status` returns the same values as `appVersion`,
 
 Versions are [semantic](https://semver.org/):
 
-- Major for a breaking change to the environment variables, the volumes or the
-  API of the container.
+- Major for a breaking change to the environment variables or the volumes. The
+  `/api` routes are internal to the UI and are not part of the contract.
 - Minor for new function.
 - Patch for fixes.
 
 `CHANGELOG.md` records each change.
 
 While the version is less than 1.0, the contract of the container is not
-settled. A minor bump (`0.1` → `0.2`) can change environment variables, volumes
-or the API. Thus read the changelog before you update.
+settled. A minor bump (`0.1` → `0.2`) can change environment variables or
+volumes. Thus read the changelog before you update.
 
 Published image tags:
 
 | Tag | Moves | Use it for |
 | --- | --- | --- |
 | `latest` | each tagged release | tracking releases, the Unraid default |
-| `0.1` | each patch release in that line | staying current in one line |
-| `0.1.0` | never | pinning exactly |
+| `0.2` | each patch release in that line | staying current in one line |
+| `0.2.0` | never | pinning exactly |
 
 To make a release:
 

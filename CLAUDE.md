@@ -83,29 +83,42 @@ good phar.
   `--include-hidden` is given. The setting changes only future syncs. If you
   set it off, hidden games that are already synced stay in the database.
 - `update-database --search=<term>` refreshes only the games that match. The
-  `update` alias is the same command. The sync screen shows this as the
-  `search` mode, which marks the library partial. Settings shows the same flag
-  as the `update_search` mode, to refresh games that are already synced. This
-  mode leaves `sync_mode` unchanged on purpose. Settings groups it with an
-  `--updated-only` run (the `incremental` mode, the same as on the sync screen)
-  in one "Library updates" card, with `.subcard` blocks.
+  `update` alias is the same command. The sync panel shows this as the
+  `search` mode ("Search by title").
+- `sync_mode` in the settings records how the library was populated. The queue
+  writes it in `JobQueue._record_sync`, only when a sync *succeeds*: a failed or
+  cancelled sync leaves it as it was. `search` means the library is partial,
+  and the library shows a warning. A search sync sets it only when the library
+  was empty or already partial before the run. On a complete library a search
+  sync is a targeted refresh, and the library stays complete.
 - `update-database --updated-only` also gets every owned game that is *missing*
-  from the local database. Thus it is a safe default. But after a `--search`
-  sync the library is partial, and the sync screen gives a warning about this.
+  from the local database. Thus it is a safe default, and an `incremental` sync
+  clears the partial flag like a full one.
 - GOG login codes are single-use, and they expire in some minutes. A login
   failure is usually the result of a stale code.
 
 ## Frontend conventions
 
 `app.js` has one state object, a hash router, and render functions. There is no
-framework. Screens are rendered through `renderChrome(heading, content, opts)`,
-which owns the app bar, the back button and the tab bar. A screen must not set
-the heading itself. All strings from the user go through `escapeHtml`. Async
-click handlers are wrapped in `guard()`, thus a failure becomes a toast.
+framework. The layout is one app bar, the library under it, at most one panel
+("sheet") over the right edge, and the queue bar at the bottom. The routes are
+`#/library`, `#/game/<id>`, `#/sync` and `#/settings`; the last three open a
+panel over the library. `render()` draws all of it, and each part has its own
+function (`renderLibrary`, `renderSheet`, `renderQueue`), thus a queue event
+does not redraw the library. All strings from the user go through
+`escapeHtml`. Async click handlers are wrapped in `guard()`, thus a failure
+becomes a toast. Ask for confirmation with `confirmDialog()`, not `confirm()`.
 
-The CSS is mobile-first. The base rules are the phone layout. Only two media
-queries make it wider: 720px makes the grid wider, and 960px moves the tab bar
-to the side.
+The theme (`system`, `light` or `dark`) and the accent theme are UI settings on
+the server (`theme`, `accent_theme`), thus all browsers share them. The accent
+colours are `ACCENT_THEMES` in `app.js`, which sets `--accent`, `--on-accent`
+and `--notice` on `#app`. The UI uses system fonts and loads nothing from the
+internet.
+
+The CSS is mobile-first. The base rules are the phone layout. 720px widens the
+grid and turns the panels into a side sheet, and 960px widens the grid again.
+At 1040px (1200px for the wide Settings panel) the queue moves to the left of
+an open panel. Below that, an open panel hides the queue.
 
 ## Development
 
@@ -139,9 +152,10 @@ Documents first, version last. The version bump is the step that makes a state
 releasable, thus nothing must be stale when it occurs. Do these steps in order.
 
 1. **Decide the number.** Use semver against the *contract of the container*.
-   Use a major bump for a breaking change to the environment variables, the
-   volumes or the API. Use a minor bump for new function. Use a patch bump for
-   fixes only. If the change can reasonably be read in two ways, ask the user
+   Use a major bump for a breaking change to the environment variables or the
+   volumes. The `/api` routes are internal to the UI and are not part of the
+   contract, so a change to them is not a major bump. Use a minor bump for new
+   function. Use a patch bump for fixes only. If the change can reasonably be read in two ways, ask the user
    which number they want.
 2. **Bring `CLAUDE.md` up to date.** Read the sections that touch the change
    again: the layout table, the load-bearing rules, and the CLI semantics.

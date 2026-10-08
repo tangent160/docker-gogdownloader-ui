@@ -16,7 +16,7 @@ from contextlib import asynccontextmanager
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import Any, AsyncIterator
+from typing import Any, AsyncIterator, Callable
 
 from .cli import GogCli, parse_progress
 from .config import Config, SettingsStore
@@ -146,10 +146,19 @@ class EventBus:
 
 
 class JobQueue:
-    def __init__(self, cli: GogCli, config: Config, settings: SettingsStore) -> None:
+    def __init__(
+        self,
+        cli: GogCli,
+        config: Config,
+        settings: SettingsStore,
+        library_empty: Callable[[], bool] = lambda: False,
+    ) -> None:
         self._cli = cli
         self._config = config
         self._settings = settings
+        #: Asked before a sync starts, to decide whether a search sync leaves
+        #: the library partial.
+        self._library_empty = library_empty
         self._jobs: dict[int, Job] = {}
         self._order: list[int] = []
         self._ids = itertools.count(1)
@@ -284,6 +293,14 @@ class JobQueue:
                 job.last_line = line
             self._publish(job)
 
+        # Read before the run: a search sync marks the library partial only when
+        # it was empty or already partial. A complete library stays complete.
+        library_was_complete = (
+            job.type is JobType.SYNC
+            and self._settings.get("sync_mode") != "search"
+            and not self._library_empty()
+        )
+
         try:
             args = self._build_args(job)
             async with self._gate:
@@ -299,10 +316,30 @@ class JobQueue:
             self._finish(job, JobState.CANCELLED)
         elif result.success:
             job.progress = 1.0
+            if job.type is JobType.SYNC:
+                self._record_sync(job, library_was_complete)
             self._finish(job, JobState.DONE)
         else:
             job.error = result.error_message
             self._finish(job, JobState.FAILED)
+
+    def _record_sync(self, job: Job, library_was_complete: bool) -> None:
+        """Store how the library was populated, once a sync has succeeded.
+
+        A sync that fails or is cancelled leaves ``sync_mode`` as it was.
+        ``--updated-only`` also fetches every owned game missing locally, so an
+        incremental sync clears the partial flag like a full one.
+        """
+        mode = job.params.get("mode", "incremental")
+        if mode == "search":
+            if library_was_complete:
+                return
+            value = "search"
+        elif mode == "incremental":
+            value = "incremental"
+        else:
+            value = "full"
+        self._settings.update({"sync_mode": value})
 
     def _finish(self, job: Job, state: JobState) -> None:
         job.state = state
@@ -327,7 +364,7 @@ class JobQueue:
         args = ["update-database"]
         if mode == "incremental":
             args.append("--updated-only")
-        elif mode in ("search", "update_search"):
+        elif mode == "search":
             args.append(f"--search={job.params.get('query', '')}")
         elif mode == "clear":
             args.append("--clear")

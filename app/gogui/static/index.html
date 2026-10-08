@@ -3,36 +3,52 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="color-scheme" content="dark light">
-  <meta name="theme-color" content="#12111a">
+  <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#fffdf7">
   <title>GOG Downloader</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>🎮</text></svg>">
   <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div id="app" hidden>
-    <header class="appbar">
-      <button class="icon-button" id="back-button" hidden aria-label="Back">&#8592;</button>
-      <h1 id="screen-title">Library</h1>
-      <div class="appbar-actions">
-        <button class="icon-button" id="search-toggle" aria-label="Search library">&#9906;</button>
+  <div id="app" class="app" hidden>
+    <header class="app-bar">
+      <div class="logo">GOG <i>Downloader</i></div>
+      <label class="search" id="search" hidden>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+        <input type="search" id="search-input" placeholder="Search library" aria-label="Search library" autocomplete="off">
+      </label>
+      <div class="app-bar-actions">
+        <button class="btn" type="button" id="sync-button" aria-label="Sync library" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12a8 8 0 0 1 14-5.3L20 9M20 4v5h-5M20 12a8 8 0 0 1-14 5.3L4 15M4 20v-5h5"></path></svg><span class="btn-label">Sync</span>
+        </button>
+        <button class="btn" type="button" id="settings-button" aria-label="Settings" hidden>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 7h9M17 7h3M4 17h3M11 17h9"></path><circle cx="15" cy="7" r="2"></circle><circle cx="9" cy="17" r="2"></circle></svg><span class="btn-label">Settings</span>
+        </button>
+        <button class="btn" type="button" id="theme-button">
+          <svg id="theme-icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"></path></svg>
+          <svg id="theme-icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"></path></svg>
+        </button>
       </div>
-      <form class="searchbar" id="searchbar" hidden role="search">
-        <input type="search" id="search-input" placeholder="Search your library" autocomplete="off" aria-label="Search your library">
-        <button type="button" class="icon-button" id="search-close" aria-label="Close search">&#10005;</button>
-      </form>
     </header>
 
-    <main id="main" aria-live="polite"></main>
+    <!-- The library, or one of the sign-in screens. -->
+    <div id="main" class="library" aria-live="polite"></div>
 
-    <nav class="tabbar" id="tabbar" aria-label="Sections">
-      <button data-route="library" class="tab" aria-current="page"><span class="tab-icon">&#9636;</span>Library</button>
-      <button data-route="queue" class="tab"><span class="tab-icon">&#8595;</span>Queue<span class="badge" id="queue-badge" hidden>0</span></button>
-      <button data-route="settings" class="tab"><span class="tab-icon">&#9881;</span>Settings</button>
-    </nav>
+    <!-- The open panel: game, sync or settings. -->
+    <div id="sheet"></div>
+
+    <div class="queue" id="queue" hidden>
+      <div class="queue-panel" id="queue-panel" aria-label="Queue" hidden></div>
+      <button class="queue-bar" type="button" id="queue-bar" aria-expanded="false">
+        <span id="queue-bar-title">Queue</span>
+        <span class="queue-bar-progress" id="queue-bar-progress"><span></span></span>
+        <span class="queue-bar-count" id="queue-bar-count">Empty</span>
+      </button>
+    </div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+    <div id="confirm"></div>
   </div>
-
-  <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
 
   <script src="app.js" type="module"></script>
 </body>

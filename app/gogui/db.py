@@ -22,6 +22,8 @@ class Game:
     slug: str | None
     #: Sum of every installer variant — overstates any one install, sort key only.
     total_size: int
+    #: Distinct installer platforms, as stored in the db (windows, mac, linux).
+    platforms: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -76,7 +78,8 @@ class GameDatabase:
     def games(self) -> list[Game]:
         rows = self._query(
             """
-            select g.id, g.game_id, g.title, g.slug, coalesce(sum(d.size), 0) as total_size
+            select g.id, g.game_id, g.title, g.slug, coalesce(sum(d.size), 0) as total_size,
+                   group_concat(distinct d.platform) as platforms
             from games g left join downloads d on d.game_id = g.id
             group by g.id order by g.title collate nocase
             """
@@ -88,6 +91,7 @@ class GameDatabase:
                 title=row["title"],
                 slug=row["slug"],
                 total_size=int(row["total_size"] or 0),
+                platforms=tuple(sorted(filter(None, (row["platforms"] or "").split(",")))),
             )
             for row in rows
         ]

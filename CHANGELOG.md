@@ -10,16 +10,48 @@ and Settings shows it separately.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-07
+
 ### Added
+- A new design for the whole UI. The library is a grid of covers under one app
+  bar with search, Sync and Settings. A game, the sync options and Settings open
+  in a panel at the right edge, over the library. The queue is a bar at the
+  bottom that opens into a list of jobs. The layout works at phone, tablet and
+  desktop widths.
+- A dark mode, and nine accent colours in **Settings → Appearance**. Sage is the
+  default. The choice is stored on the server, thus every browser shows the
+  same look. The moon or sun button in the app bar changes between light and
+  dark.
+- A game without a cover image shows a coloured block with its initials.
+- Each game card shows its platforms as W, M and L tags.
+- The library sort has a direction. Select the active sort again to reverse it.
+- Clear and resync, a database import and the removal of a CLI version ask for
+  confirmation in a dialog that names the action.
 - `THIRD-PARTY-NOTICES.md` lists each third-party component in the image and
   its license.
 
 ### Changed
+- The UI uses the system fonts of the device. It loads no web fonts.
+- The "Recently added" sort is now called "Date added".
+- Settings sections are in A to Z order, with About last.
+- The partial-library warning changes only when a sync succeeds. A sync that
+  fails or that you cancel leaves it as it was.
+- A search sync marks the library as incomplete only when the library was empty
+  or already incomplete. A search sync on a complete library refreshes the
+  matching games, and the library stays complete. A "Changed games" sync also
+  gets every missing game, thus it clears the warning.
+- The cloud saves job is now called "Download cloud saves".
 - Images are built and published only from a `v*` tag. Pushes to `main` and
   pull requests no longer run a workflow. Thus `latest` now tracks the newest
   release, not the newest commit.
 - The overview of the Unraid template points at Settings > About for the
   version details to put in a bug report.
+
+### Removed
+- The "Library updates" card in Settings. The sync panel does the same work:
+  "Changed games" is the old "Update changed games", and "Search by title" on a
+  complete library is the old "Update matching games". The `update_search` sync
+  mode of the internal API is gone.
 
 ### Fixed
 - A GOG login, a backup import and a change of the CLI version can no longer
